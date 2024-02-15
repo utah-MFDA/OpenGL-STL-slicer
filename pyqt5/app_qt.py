@@ -1,4 +1,4 @@
-import sys
+import sys, os
 import glob
 import json
 import numpy as np
@@ -27,6 +27,7 @@ class Window(QtGui.QOpenGLWindow):
         pixelPitch,
         sliceSavePath,
         progress_handle,
+        shaderPath,
         *args,
         **kwargs,
     ):
@@ -50,17 +51,23 @@ class Window(QtGui.QOpenGLWindow):
         self.pixelPitch = pixelPitch
         self.sliceSavePath = sliceSavePath
         self.progress_handle = progress_handle
+        self.shaderPath = shaderPath
 
     def initializeGL(self):
-        self.gl = self.context().versionFunctions()
+        profile = QtGui.QOpenGLVersionProfile()
+        profile.setProfile(QtGui.QSurfaceFormat.CoreProfile)
+        profile.setVersion(4,1)
+
+        self.gl = self.context().versionFunctions(profile)
 
         self.shaderProg = QtGui.QOpenGLShaderProgram()
         self.shaderProg.create()
+
         self.shaderProg.addShaderFromSourceFile(
-            QtGui.QOpenGLShader.Vertex, "shaders/slice.vert"
+            QtGui.QOpenGLShader.Vertex, self.shaderPath + "/slice.vert"
         )
         self.shaderProg.addShaderFromSourceFile(
-            QtGui.QOpenGLShader.Fragment, "shaders/slice.frag"
+            QtGui.QOpenGLShader.Fragment, self.shaderPath + "/slice.frag"
         )
         self.shaderProg.link()
 
@@ -110,6 +117,7 @@ class Window(QtGui.QOpenGLWindow):
         self.vertVBO.setUsagePattern(QtGui.QOpenGLBuffer.StaticDraw)
         data = ourMesh.vectors.astype(GLfloat).tostring()
         self.vertVBO.allocate(data, len(data))
+
         self.gl.glVertexAttribPointer(
             0, 3, self.gl.GL_FLOAT, self.gl.GL_FALSE, 3 * sizeof(GLfloat), 0
         )
@@ -254,10 +262,13 @@ class Window(QtGui.QOpenGLWindow):
 
 
 def generate_slices(
-    stlFilename, layerThickness, imageWidth, imageHeight, pixelPitch, progress_handle=None
+        stlFilename, layerThickness, imageWidth, imageHeight, pixelPitch, shaderPath, progress_handle=None, output=None
 ):
-    stlParentFolder = Path(stlFilename).parent
-    sliceSavePath = Path(stlParentFolder) / "slices"
+    if output:
+        sliceSavePath = output
+    else:
+        stlParentFolder = Path(stlFilename).parent
+        sliceSavePath = Path(stlParentFolder) / "slices"
 
     if not Path(sliceSavePath).exists():
         Path(sliceSavePath).mkdir()
@@ -283,6 +294,7 @@ def generate_slices(
         pixelPitch,
         sliceSavePath,
         progress_handle,
+        shaderPath,
     )
     SCR_WIDTH = 640
     SCR_HEIGHT = int(SCR_WIDTH * imageHeight / imageWidth)
@@ -371,4 +383,7 @@ def dice_images(
 if __name__ == "__main__":
     stlFilename = sys.argv[1]
     layerThickness = float(sys.argv[2])
-    generate_slices(stlFilename, layerThickness)
+    out_dir = sys.argv[3] if len(sys.argv) == 4 else None
+    shaders = os.path.dirname(sys.argv[0]) + "/shaders"
+    generate_slices(stlFilename, layerThickness, 2560, 1600, 30,
+                    shaderPath=shaders, output=out_dir)
